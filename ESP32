@@ -1,0 +1,270 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <DHT.h>
+#include <ArduinoJson.h>
+#include <TensorFlowLite_ESP32.h>
+
+#define TFLITE_SCHEMA_VERSION 3
+
+#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/micro_error_reporter.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+
+#include "irrigation_model.h"
+
+// ===================== WIFI =====================
+const char* ssid = "HIBA'S WIFI";
+const char* password = "Hib@N@ssi200415";
+
+const char* serverUrl = "http://172.24.171.236:8080/api/sensor/add";
+const char* configUrl = "http://172.24.171.236:8080/api/config";
+
+// ===================== PINS =====================
+#define DHTPIN 4
+#define DHTTYPE DHT11
+
+#define SOIL_PIN 34
+#define RELAY_PIN 26
+
+DHT dht(DHTPIN, DHTTYPE);
+
+// ===================== NORMALISATION =====================
+#define SOIL_MIN 0
+#define SOIL_MAX 100
+
+#define TEMP_MIN 0
+#define TEMP_MAX 50
+
+// ===================== TFLITE =====================
+tflite::MicroErrorReporter micro_error_reporter;
+tflite::AllOpsResolver resolver;
+
+const tflite::Model* model;
+tflite::MicroInterpreter* interpreter;
+
+TfLiteTensor* input;
+TfLiteTensor* output;
+
+constexpr int tensorArenaSize = 16 * 1024;
+uint8_t tensorArena[tensorArenaSize];
+
+// ===================== SETUP =====================
+void setup() {
+
+  Serial.begin(115200);
+
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW);
+
+  dht.begin();
+
+  // ===== WIFI =====
+  WiFi.begin(ssid, password);
+
+  Serial.print("Connecting WiFi");
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nWiFi Connected!");
+
+  // ===== MODEL =====
+  model = tflite::GetModel(irrigation_model);
+
+  if (model->version() != TFLITE_SCHEMA_VERSION) {
+    Serial.println("Model schema mismatch!");
+    while (1);
+  }
+
+  static tflite::MicroInterpreter staticInterpreter(
+      model,
+      resolver,
+      tensorArena,
+      tensorArenaSize,
+      &micro_error_reporter);
+
+  interpreter = &staticInterpreter;
+
+  if (interpreter->AllocateTensors() != kTfLiteOk) {
+
+    Serial.println("AllocateTensors FAILED");
+
+    while (1);
+  }
+
+  input = interpreter->input(0);
+  output = interpreter->output(0);
+
+  Serial.println("System Ready 🚀");
+}
+
+// ===================== LOOP =====================
+void loop() {
+
+  // ===== Lecture capteurs =====
+  int rawSoil = analogRead(SOIL_PIN);
+
+  // Conversion brute -> %
+  float soilMoisture =
+      ((4095.0 - rawSoil) / 4095.0) * 100.0;
+
+  float temperature = dht.readTemperature();
+
+  if (isnan(temperature)) {
+
+    Serial.println("DHT Error");
+
+    delay(2000);
+
+    return;
+  }
+
+  // ===== Normalisation =====
+  float soilNorm = (soilMoisture - SOIL_MIN) / (SOIL_MAX - SOIL_MIN);
+
+  float tempNorm = (temperature - TEMP_MIN) / (TEMP_MAX - TEMP_MIN);
+
+  soilNorm = constrain(soilNorm, 0.0, 1.0);
+  tempNorm = constrain(tempNorm, 0.0, 1.0);
+
+  // ===== TinyML ===========
+
+  input->data.f[0] = soilNorm;
+  input->data.f[1] = tempNorm;
+
+  if (interpreter->Invoke() != kTfLiteOk) {
+
+    Serial.println("Inference Error");
+
+    delay(2000);
+
+    return;
+  }
+
+  float prediction = output->data.f[0];
+
+  // ===== Variables =====
+  bool autoMode = true;
+  String pumpStatus = "OFF";
+
+  // ===== Lire configuration Backend =====
+  if (WiFi.status() == WL_CONNECTED) {
+
+    HTTPClient configHttp;
+
+    configHttp.begin(configUrl);
+
+    int code = configHttp.GET();
+
+    if (code == 200) {
+
+      String response = configHttp.getString();
+
+      DynamicJsonDocument doc(512);
+
+      deserializeJson(doc, response);
+
+      autoMode = doc["autoMode"];
+
+      String backendPump =
+          doc["pumpStatus"].as<String>();
+
+      // ===== MODE AUTO =====
+      if (autoMode) {
+
+        if (prediction > 0.5) {
+
+          digitalWrite(RELAY_PIN, LOW);
+
+          pumpStatus = "OFF";
+
+        } else {
+
+          digitalWrite(RELAY_PIN, HIGH);
+
+          pumpStatus = "ON";        
+        }
+      }
+
+      // ===== MODE MANUEL =====
+      else {
+
+        pumpStatus = backendPump;
+
+        if (backendPump == "ON") {
+
+          digitalWrite(RELAY_PIN, HIGH);
+
+        } else {
+
+          digitalWrite(RELAY_PIN, LOW);
+        }
+      }
+    }
+    else {
+
+      Serial.print("Config GET Error : ");
+      Serial.println(code);
+    }
+
+    configHttp.end();
+  }
+
+  // ===== MONITORING =====
+ Serial.println("\n========== DATA ==========");
+
+  Serial.print("Soil Norm : ");
+  Serial.println(soilNorm);
+
+  Serial.print("Temp Norm : ");
+  Serial.println(tempNorm);
+
+  Serial.print("Soil Moisture (%) : ");
+  Serial.println(soilMoisture);
+
+  Serial.print("Temperature : ");
+  Serial.println(temperature);
+
+  Serial.print("Prediction : ");
+  Serial.println(prediction);
+
+  Serial.print("Auto Mode : ");
+  Serial.println(autoMode);
+
+  Serial.print("Pump Status : ");
+  Serial.println(pumpStatus);
+
+  Serial.println("========================");
+
+  // ===== Envoi Backend =====
+  if (WiFi.status() == WL_CONNECTED) {
+
+    HTTPClient http;
+
+    http.begin(serverUrl);
+
+    http.addHeader("Content-Type", "application/json");
+
+    String json = "{";
+
+    json += "\"temperature\":" + String(temperature) + ",";
+    json += "\"soilMoisture\":" + String(soilMoisture) + ",";
+    json += "\"prediction\":" + String(prediction, 4) + ",";
+    json += "\"pumpStatus\":\"" + pumpStatus + "\",";
+    json += "\"autoMode\":" + String(autoMode ? "true" : "false");
+
+    json += "}";
+
+    int responseCode = http.POST(json);
+
+    Serial.print("HTTP Response : ");
+    Serial.println(responseCode);
+
+    http.end();
+  }
+
+  delay(5000);
+}

@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'react-native';
 import {
   Alert,
   ScrollView,
@@ -8,7 +10,7 @@ import {
   View,
 } from 'react-native';
 
-const API_URL = 'http://192.168.11.110:8080';
+const API_URL = 'http://172.24.171.236:8080';
 
 export default function HomeScreen() {
   const [sensorData, setSensorData] = useState<any>(null);
@@ -58,83 +60,196 @@ export default function HomeScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>
-        🌱 Système d'Irrigation
-      </Text>
+      <View style={styles.heroContainer}>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>
-          🌡 Température
-        </Text>
+        <Image
+          source={require('../../assets/images/menthe.jpg')}
+          style={styles.heroImage}
+        />
 
-        <Text style={styles.value}>
-          {sensorData?.temperature ?? '--'} °C
-        </Text>
+        <View style={styles.header}>
+<View style={styles.headerContent}>
+    <Ionicons
+        name="leaf"
+        size={30}
+        color="#09390b"
+    />
+
+    <Text style={styles.headerTitle}>
+        Ma Plante
+    </Text>
+</View>
+        </View>
+
+        <View style={styles.heroTextContainer}>
+          <Text style={styles.heroTitle}>
+            Bienvenue !
+          </Text>
+
+          <Text style={styles.heroSubtitle}>
+            Surveillez votre plante en temps réel
+          </Text>
+        </View>
+
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>
-          💧 Humidité du sol
-        </Text>
+      <View style={styles.row}>
 
-        <Text style={styles.value}>
-          {sensorData?.soilMoisture ?? '--'} %
-        </Text>
+        <View style={[styles.card, styles.smallCard]}>
+          <View style={styles.labelContainer}>
+            <Ionicons
+              name="thermometer"
+              size={22}
+              color="#F44336"
+            />
+
+            <Text style={styles.labelText}>
+              Température
+            </Text>
+          </View>
+
+          <Text style={styles.value}>
+            {sensorData?.temperature ?? '--'} °C
+          </Text>
+        </View>
+
+        <View style={[styles.card, styles.smallCard]}>
+          <View style={styles.labelContainer}>
+            <Ionicons
+              name="water"
+              size={22}
+              color="#2196F3"
+            />
+
+            <Text style={styles.labelText}>
+              Humidité
+            </Text>
+          </View>
+
+          <Text style={styles.value}>
+            {sensorData?.soilMoisture ?? '--'} %
+          </Text>
+        </View>
+
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>
-          🚰 Pompe
-        </Text>
+      <View style={[styles.card, styles.largeCard]}>
 
-        <Text style={styles.value}>
-          {config?.pumpStatus ?? '--'}
-        </Text>
+        <View style={styles.labelContainer}>
+          <Ionicons
+            name="funnel"
+            size={22}
+            color="#2196F3"
+          />
+
+          <Text style={styles.labelText}>
+            État de la pompe
+          </Text>
+        </View>
+
+        <View style={styles.pumpRow}>
+
+          <Text
+            style={[
+              styles.pumpStatus,
+              {
+                color:
+                  sensorData?.pumpStatus === 'ON'
+                    ? '#4CAF50'
+                    : '#F44336',
+              },
+            ]}>
+            {sensorData?.pumpStatus ?? '--'}
+          </Text>
+
+          {!config?.autoMode && (
+            <View style={styles.pumpButtonsContainer}>
+
+              <TouchableOpacity
+                style={[
+                  styles.powerButton,
+                  sensorData?.pumpStatus === 'OFF'
+                    ? styles.powerOnActive
+                    : styles.powerInactive,
+                ]}
+                onPress={() => sendCommand('/api/pump/on')}>
+                <Ionicons
+                  name="power"
+                  size={28}
+                  color="white"
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.powerButton,
+                  sensorData?.pumpStatus === 'ON'
+                    ? styles.powerOffActive
+                    : styles.powerInactive,
+                ]}
+                onPress={() => sendCommand('/api/pump/off')}>
+                <Ionicons
+                  name="power"
+                  size={28}
+                  color="white"
+                />
+              </TouchableOpacity>
+
+            </View>
+          )}
+
+        </View>
+
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>
-          🔄 Mode automatique
+      <View style={[styles.card, styles.largeCard]}>
+
+        <View style={styles.labelContainer}>
+          <Ionicons
+            name="sync-circle"
+            size={22}
+            color="#FF9800"
+          />
+
+          <Text style={styles.labelText}>
+            Mode automatique
+          </Text>
+        </View>
+
+        <Text
+          style={[
+            styles.value,
+            {
+              color: config?.autoMode
+                ? '#4CAF50'
+                : '#F44336',
+            },
+          ]}>
+          {config?.autoMode
+            ? 'Activé'
+            : 'Désactivé'}
         </Text>
 
-        <Text style={styles.value}>
-          {config?.autoMode ? 'Activé' : 'Désactivé'}
-        </Text>
       </View>
 
       <TouchableOpacity
-        style={[styles.button, styles.onButton]}
-        onPress={() => sendCommand('/api/pump/on')}>
-        <Text style={styles.buttonText}>
-          Allumer la pompe
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.button, styles.offButton]}
-        onPress={() => sendCommand('/api/pump/off')}>
-        <Text style={styles.buttonText}>
-          Éteindre la pompe
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.button, styles.autoButton]}
+        style={[
+          styles.button,
+          config?.autoMode
+            ? styles.manualButton
+            : styles.autoButton,
+        ]}
         onPress={() =>
-          sendCommand('/api/auto/enable')
+          sendCommand(
+            config?.autoMode
+              ? '/api/auto/disable'
+              : '/api/auto/enable'
+          )
         }>
         <Text style={styles.buttonText}>
-          Activer Auto
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.button, styles.manualButton]}
-        onPress={() =>
-          sendCommand('/api/auto/disable')
-        }>
-        <Text style={styles.buttonText}>
-          Désactiver Auto
+          {config?.autoMode
+            ? 'Passer en mode manuel'
+            : 'Activer le mode automatique'}
         </Text>
       </TouchableOpacity>
     </ScrollView>
@@ -143,8 +258,6 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
-    paddingTop: 60,
     backgroundColor: '#f2f2f2',
     flexGrow: 1,
   },
@@ -157,10 +270,26 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: 'white',
+    backgroundColor: '#FFFFFF',
+
+    borderRadius: 20,
+
     padding: 20,
-    borderRadius: 15,
-    marginBottom: 15,
+
+    marginBottom: 18,
+
+    elevation: 8,
+
+    shadowColor: '#000',
+
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+
+    shadowOpacity: 0.15,
+
+    shadowRadius: 8,
   },
 
   label: {
@@ -175,6 +304,8 @@ const styles = StyleSheet.create({
   },
 
   button: {
+    width: '90%',
+    alignSelf: 'center',
     padding: 15,
     borderRadius: 12,
     marginTop: 12,
@@ -202,4 +333,197 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
+
+  welcomeCard: {
+    backgroundColor: '#4CAF50',
+    padding: 20,
+    borderRadius: 15,
+    marginBottom: 20,
+  },
+
+  welcomeTitle: {
+    color: 'white',
+    fontSize: 22,
+    fontWeight: 'bold',
+  },
+
+  welcomeText: {
+    color: 'white',
+    marginTop: 5,
+    fontSize: 16,
+  },
+
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+    marginHorizontal: 15,
+  },
+
+  smallCard: {
+    width: '42%',
+  },
+  pumpContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 15,
+  },
+
+  centerCard: {
+    width: '90%',
+    alignSelf: 'center',
+  },
+
+  pumpStatus: {
+    fontSize: 28,
+    fontWeight: 'bold',
+  },
+
+  onSwitch: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 30,
+  },
+
+  offSwitch: {
+    backgroundColor: '#F44336',
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 30,
+  },
+
+  switchText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  heroContainer: {
+    position: 'relative',
+    marginBottom: 25,
+  },
+
+  heroImage: {
+    width: '100%',
+    height: 260,
+  },
+
+  header: {
+    position: 'absolute',
+    top: 40,
+    left: 20,
+    right: 20,
+
+    backgroundColor: 'rgba(46,125,50,0.85)',
+
+    padding: 15,
+    borderRadius: 15,
+  },
+
+  headerTitle: {
+    color: 'white',
+    fontSize: 26,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+
+  plantInfo: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+
+  plantName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+
+  plantStatus: {
+    marginTop: 5,
+    color: '#4CAF50',
+    fontSize: 28,
+    fontWeight: 'bold',
+  },
+  heroTextContainer: {
+    position: 'absolute',
+    bottom: 25,
+    left: 20,
+  },
+
+  heroTitle: {
+    color: 'white',
+    fontSize: 28,
+    fontWeight: 'bold',
+    textShadowColor: 'rgba(0,0,0,0.7)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 5,
+  },
+
+  heroSubtitle: {
+    color: 'white',
+    fontSize: 16,
+    marginTop: 5,
+    textShadowColor: 'rgba(0,0,0,0.7)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 5,
+  },
+
+  pumpButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 15,
+    marginTop: 15,
+  },
+
+  pumpRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 15,
+  },
+
+  labelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  labelText: {
+    fontSize: 16,
+    color: '#666',
+    marginLeft: 8,
+    fontWeight: 'bold',
+  },
+
+  largeCard: {
+    marginLeft: 18,
+    marginRight: 18,
+  },
+
+  powerButton: {
+  width: 52,
+  height: 52,
+  borderRadius: 26,
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginHorizontal: 6,
+},
+
+powerOnActive: {
+  backgroundColor: '#4CAF50',
+},
+
+powerOffActive: {
+  backgroundColor: '#F44336',
+},
+
+powerInactive: {
+  backgroundColor: '#BDBDBD',
+},
+
+headerContent: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
 });
